@@ -4,7 +4,7 @@
 
 A fully interactive, client-side visual programming tool for building and evaluating mathematical expressions. This intuitive editor allows users to create, connect, and manipulate nodes to perform calculations in a graphical, flow-based environment.
 
-
+![Lambda-Flux Screenshot](screenshot.png)
 
 ## ✨ Features
 
