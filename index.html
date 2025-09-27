@@ -200,6 +200,7 @@
             font-size: 1.2em;
             font-family: 'Courier New', Courier, monospace;
             min-height: 1.5em;
+            word-wrap: break-word;
         }
 
         #context-menu {
@@ -312,6 +313,7 @@
                     'Logarithm': (x, y) => new LogarithmNode(this, 'Logarithm', x, y),
                     'Sine': (x, y) => new SineNode(this, 'Sine', x, y),
                     'Cosine': (x, y) => new CosineNode(this, 'Cosine', x, y),
+                    'Tangent': (x, y) => new TangentNode(this, 'Tangent', x, y), // <-- ADDED
                     'Viewer': (x, y) => new ViewerNode(this, 'Viewer', x, y),
                     'Frame': (x, y) => new FrameNode(this, 'Frame', x, y),
                 };
@@ -1137,8 +1139,14 @@
             }
             calculate() {
                 const a = this.getInputValue(0) ?? 0;
-                const b = this.getInputValue(1) ?? 1;
-                this.setOutputValue(0, b !== 0 ? a / b : 0);
+                const b = this.getInputValue(1) ?? 1; // Defaulting to 1 is safe if B is unconnected
+                
+                // Let JavaScript's native division handle special cases.
+                // 1 / 0 => Infinity
+                // -1 / 0 => -Infinity
+                // 0 / 0 => NaN
+                // This is more consistent and mathematically correct than returning 0.
+                this.setOutputValue(0, a / b);
             }
         }
 
@@ -1155,7 +1163,7 @@
                 if (value > 0 && base > 0 && base !== 1) {
                     this.setOutputValue(0, Math.log(value) / Math.log(base));
                 } else {
-                    this.setOutputValue(0, 0);
+                    this.setOutputValue(0, NaN); // Log of non-positive number is undefined
                 }
             }
         }
@@ -1182,6 +1190,27 @@
             }
         }
 
+        // --- NEW NODE ---
+        class TangentNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('Value'); // Expects radians
+                this.addOutput('Result');
+            }
+            calculate() {
+                const value = this.getInputValue(0) ?? 0;
+                const cosValue = Math.cos(value);
+
+                // Use an epsilon comparison to check if we are at a vertical asymptote
+                // (e.g., PI/2, 3*PI/2), where cosine is effectively zero.
+                if (Math.abs(cosValue) < 1e-15) {
+                    this.setOutputValue(0, Infinity); 
+                } else {
+                    this.setOutputValue(0, Math.tan(value));
+                }
+            }
+        }
+
         class ViewerNode extends Node {
             constructor(editor, title, x, y) {
                 super(editor, title, x, y);
@@ -1194,13 +1223,33 @@
             calculate() {
                 const value = this.getInputValue(0);
 
-                if (value === null || isNaN(value)) {
+                if (value === null) {
                     this.display.textContent = '...';
                     return;
                 }
+                
+                // Handle special floating point values first for clear output
+                if (Object.is(value, NaN)) {
+                    this.display.textContent = 'NaN';
+                    return;
+                }
+                if (value === Infinity) {
+                    this.display.textContent = 'Infinity';
+                    return;
+                }
+                if (value === -Infinity) {
+                    this.display.textContent = '-Infinity';
+                    return;
+                }
+
+                // If the number is extremely large, toLocaleString can be misleading.
+                // Switch to exponential notation for better readability.
+                if (Math.abs(value) > 1e12) {
+                     this.display.textContent = value.toExponential(4);
+                     return;
+                }
 
                 const precision = 8;
-
                 this.display.textContent = value.toLocaleString(undefined, {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: precision
