@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visual Math Node Editor</title>
+    <style>
+        /* --- Basic Setup --- */
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #2a2a2e;
+            color: #f0f0f0;
+        }
+
+        /* --- Editor Container --- */
+        #node-editor {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background-color: #35353a;
+            background-image: linear-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.07) 1px, transparent 1px);
+            background-size: 20px 20px;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #editor-content {
+            position: absolute;
+            transform-origin: 0 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #nodes-container,
+        #connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #nodes-container {
+            pointer-events: none;
+        }
+
+        #connections-svg {
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        .connection-path {
+            stroke: #a0a0a0;
+            stroke-width: 3px;
+            fill: none;
+        }
+
+        .cut-line {
+            stroke: #ff5555;
+            stroke-width: 2px;
+            stroke-dasharray: 8 4;
+            pointer-events: none;
+        }
+
+        /* --- Animation for data flow --- */
+        @keyframes flow {
+            to {
+                stroke-dashoffset: -24;
+            }
+        }
+
+        .connection-path.flow-active {
+            stroke: #f0c040;
+            stroke-dasharray: 8 4;
+            animation: flow 1s linear infinite;
+        }
+
+        /* --- Node Styling --- */
+        .node {
+            position: absolute;
+            background-color: rgba(40, 40, 45, 0.85);
+            border: 1px solid #1a1a1a;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            width: 200px;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+            user-select: none;
+            cursor: default;
+            pointer-events: auto;
+            z-index: 1;
+        }
+
+        .node.selected {
+            outline: 2px solid #50a0f0;
+            border-color: #70b0ff;
+        }
+
+        .node-header {
+            background-color: #4a4a52;
+            padding: 8px 12px;
+            font-weight: bold;
+            border-top-left-radius: 8px;
+            border-top-right-radius: 8px;
+            cursor: move;
+        }
+
+        .node-header input {
+            width: 100%;
+            background-color: #3a3a40;
+            border: 1px solid #70b0ff;
+            color: #f0f0f0;
+            font-weight: bold;
+            padding: 0;
+            margin: 0;
+            font-size: 1em;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+
+        .node-content {
+            padding: 12px;
+        }
+
+        .node-io {
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .node-inputs,
+        .node-outputs {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .socket-container {
+            display: flex;
+            align-items: center;
+        }
+
+        .node-outputs .socket-container {
+            justify-content: flex-end;
+        }
+
+        .socket {
+            width: 12px;
+            height: 12px;
+            background-color: #606060;
+            border: 2px solid #808080;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.15s, border-color 0.15s;
+        }
+
+        .socket-label {
+            margin: 0 8px;
+        }
+
+        .socket.input {
+            margin-right: -7px;
+        }
+
+        .socket.output {
+            margin-left: -7px;
+        }
+
+        .socket:hover {
+            background-color: #f0c040;
+            border-color: #ffffff;
+        }
+
+        .socket.connected {
+            background-color: #50a0f0;
+            border-color: #a0d0ff;
+        }
+
+        .node input[type="number"] {
+            width: calc(100% - 10px);
+            background-color: #2a2a2e;
+            border: 1px solid #555;
+            color: #f0f0f0;
+            border-radius: 4px;
+            padding: 4px;
+        }
+
+        .viewer-display {
+            background-color: #2a2a2e;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: right;
+            font-size: 1.2em;
+            font-family: 'Courier New', Courier, monospace;
+            min-height: 1.5em;
+        }
+
+        #context-menu {
+            position: absolute;
+            display: none;
+            background-color: #4a4a52;
+            border: 1px solid #1a1a1a;
+            border-radius: 5px;
+            padding: 5px 0;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+
+        #context-menu div {
+            padding: 8px 20px;
+            cursor: pointer;
+        }
+
+        #context-menu div:hover {
+            background-color: #5a5a62;
+        }
+
+        .frame-node {
+            background-color: rgba(60, 60, 65, 0.5);
+            z-index: 0;
+            backdrop-filter: none;
+            -webkit-backdrop-filter: none;
+        }
+
+        .frame-node .node-header {
+            background-color: rgba(90, 90, 95, 0.7);
+        }
+
+        .frame-resizer {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            right: -2px;
+            bottom: -2px;
+            cursor: se-resize;
+            border-bottom: 2px solid #aaa;
+            border-right: 2px solid #aaa;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="node-editor">
+        <div id="editor-content">
+            <div id="nodes-container"></div>
+            <svg id="connections-svg"></svg>
+        </div>
+    </div>
+    <div id="context-menu"></div>
+
+    <script>
+        function generateId() {
+            return '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        class NodeEditor {
+            constructor(containerId) {
+                this.container = document.getElementById(containerId);
+                this.content = document.getElementById('editor-content');
+                this.nodesContainer = document.getElementById('nodes-container');
+                this.svg = document.getElementById('connections-svg');
+                this.contextMenu = document.getElementById('context-menu');
+                this.nodes = new Map();
+                this.connections = new Map();
+                this.pan = { x: 0, y: 0 };
+                this.zoom = 1;
+                this.isPanning = false;
+                this.isDraggingNode = null;
+                this.isConnecting = null;
+                this.isCutting = false;
+                this.cutLine = { start: { x: 0, y: 0 }, element: null };
+                this.dragOffset = { x: 0, y: 0 };
+                this.lastMousePos = { x: 0, y: 0 };
+                this.clientMousePos = { x: 0, y: 0 };
+                this.selectedNodes = new Set();
+                this.activeNode = null;
+                this.init();
+            }
+
+            init() {
+                this.container.addEventListener('mousedown', this.onMouseDown.bind(this));
+                this.container.addEventListener('mousemove', this.onMouseMove.bind(this));
+                this.container.addEventListener('mouseup', this.onMouseUp.bind(this));
+                this.container.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
+                this.container.addEventListener('contextmenu', this.onContextMenu.bind(this));
+                document.addEventListener('keydown', this.onKeyDown.bind(this));
+                document.addEventListener('click', () => this.contextMenu.style.display = 'none');
+                this.contextMenu.addEventListener('mousedown', (e) => e.stopPropagation());
+                this.setupContextMenu();
+                this.addNode(new NumberNode(this, 'Value A', 100, 100));
+                this.addNode(new NumberNode(this, 'Value B', 100, 250));
+                this.addNode(new AddNode(this, 'Add', 400, 150));
+                this.addNode(new ViewerNode(this, 'Result', 700, 150));
+            }
+
+            setupContextMenu() {
+                const nodeTypes = {
+                    'Input': (x, y) => new NumberNode(this, 'Number', x, y),
+                    'Pi (π)': (x, y) => new PiNode(this, 'Pi (π)', x, y),
+                    'Gravity (g)': (x, y) => new GravityNode(this, 'Gravity (g)', x, y),
+                    'Add': (x, y) => new AddNode(this, 'Add', x, y),
+                    'Subtract': (x, y) => new SubtractNode(this, 'Subtract', x, y),
+                    'Multiply': (x, y) => new MultiplyNode(this, 'Multiply', x, y),
+                    'Divide': (x, y) => new DivideNode(this, 'Divide', x, y),
+                    'Logarithm': (x, y) => new LogarithmNode(this, 'Logarithm', x, y),
+                    'Sine': (x, y) => new SineNode(this, 'Sine', x, y),
+                    'Cosine': (x, y) => new CosineNode(this, 'Cosine', x, y),
+                    'Viewer': (x, y) => new ViewerNode(this, 'Viewer', x, y),
+                    'Frame': (x, y) => new FrameNode(this, 'Frame', x, y),
+                };
+                for (const [name, factory] of Object.entries(nodeTypes)) {
+                    const item = document.createElement('div');
+                    item.textContent = name;
+                    item.addEventListener('click', () => {
+                        const spawnX = this.lastMousePos.x - 100;
+                        const spawnY = this.lastMousePos.y;
+                        const newNode = factory(spawnX, spawnY);
+                        this.addNode(newNode);
+                        this.startDraggingNewNodes([newNode]);
+                        this.contextMenu.style.display = 'none';
+                    });
+                    this.contextMenu.appendChild(item);
+                }
+            }
+
+            getMousePosition(event) {
+                const rect = this.container.getBoundingClientRect();
+                const x = (event.clientX - rect.left - this.pan.x) / this.zoom;
+                const y = (event.clientY - rect.top - this.pan.y) / this.zoom;
+                return { x, y };
+            }
+
+            onMouseDown(event) {
+                const target = event.target;
+                const mousePos = this.getMousePosition(event);
+
+                if (event.button === 2 && event.ctrlKey) {
+                    event.preventDefault();
+                    this.isCutting = true;
+                    this.cutLine.start = mousePos;
+                    this.cutLine.element = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    this.cutLine.element.setAttribute('class', 'cut-line');
+                    this.cutLine.element.setAttribute('x1', mousePos.x);
+                    this.cutLine.element.setAttribute('y1', mousePos.y);
+                    this.cutLine.element.setAttribute('x2', mousePos.x);
+                    this.cutLine.element.setAttribute('y2', mousePos.y);
+                    this.svg.appendChild(this.cutLine.element);
+                    return;
+                }
+
+                if (target.classList.contains('socket')) {
+                    const socket = this.findSocket(target.dataset.id);
+                    if (socket?.type === 'output') {
+                        this.isConnecting = { fromSocket: socket };
+                        const tempPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                        tempPath.setAttribute('class', 'connection-path');
+                        this.svg.appendChild(tempPath);
+                        this.isConnecting.tempPath = tempPath;
+                    }
+                } else if (target.classList.contains('node-header') || target.classList.contains('frame-resizer')) {
+                    const node = this.nodes.get(target.closest('.node').dataset.id);
+                    if (!this.selectedNodes.has(node.id)) {
+                        if (!event.shiftKey) {
+                            this.clearSelection();
+                        }
+                        this.selectNode(node);
+                    }
+                    this.activeNode = node;
+                    this.isDraggingNode = node;
+                    this.dragOffset.x = mousePos.x - node.x;
+                    this.dragOffset.y = mousePos.y - node.y;
+                } else if (target === this.container || target === this.content) {
+                    this.isPanning = true;
+                    this.clearSelection();
+                }
+            }
+
+            onMouseMove(event) {
+                this.clientMousePos = { x: event.clientX, y: event.clientY };
+                const mousePos = this.getMousePosition(event);
+
+                if (this.isCutting) {
+                    this.cutLine.element.setAttribute('x2', mousePos.x);
+                    this.cutLine.element.setAttribute('y2', mousePos.y);
+                    this.checkCutIntersection(this.cutLine.start, mousePos);
+                    this.cutLine.start = mousePos;
+                } else if (this.isConnecting) {
+                    const fromPos = this.isConnecting.fromSocket.getAttachPoint();
+                    this.isConnecting.tempPath.setAttribute('d', this.createPath(fromPos, mousePos));
+                } else if (this.isDraggingNode && !(this.isDraggingNode instanceof FrameNode && this.isDraggingNode.isResizing)) {
+                    const newX = mousePos.x - this.dragOffset.x;
+                    const newY = mousePos.y - this.dragOffset.y;
+                    const dx = newX - this.isDraggingNode.x;
+                    const dy = newY - this.isDraggingNode.y;
+                    if (dx !== 0 || dy !== 0) {
+                        for (const nodeId of this.selectedNodes) {
+                            const node = this.nodes.get(nodeId);
+                            node.setPosition(node.x + dx, node.y + dy);
+                        }
+                        this.updateAllConnections();
+                    }
+                } else if (this.isPanning) {
+                    const dx = event.clientX - this.lastMousePos.x;
+                    const dy = event.clientY - this.lastMousePos.y;
+                    this.pan.x += dx;
+                    this.pan.y += dy;
+                    this.updateTransform();
+                }
+                this.lastMousePos = { x: event.clientX, y: event.clientY };
+            }
+
+            onMouseUp(event) {
+                if (this.isDraggingNode) {
+                    this.updateAllFrameChildren();
+                }
+                if (this.isCutting) {
+                    this.isCutting = false;
+                    this.cutLine.element.remove();
+                    this.cutLine.element = null;
+                }
+                if (this.isConnecting) {
+                    const toSocket = this.findSocket(event.target.dataset.id);
+                    if (toSocket?.canConnect(this.isConnecting.fromSocket)) {
+                        this.createConnection(this.isConnecting.fromSocket, toSocket);
+                    }
+                    this.isConnecting.tempPath.remove();
+                    this.isConnecting = null;
+                }
+                if (this.isDraggingNode instanceof FrameNode) {
+                    this.isDraggingNode.isResizing = false;
+                }
+                this.isDraggingNode = null;
+                this.isPanning = false;
+                this.container.style.cursor = 'grab';
+            }
+
+            onKeyDown(event) {
+                if (event.target.tagName.toLowerCase() === 'input') return;
+                const key = event.key;
+                if (event.shiftKey && key.toLowerCase() === 'a') {
+                    event.preventDefault();
+                    this.showContextMenu(this.clientMousePos.x, this.clientMousePos.y);
+                } else if (key.toLowerCase() === 'a') {
+                    event.preventDefault();
+                    this.selectAllNodes();
+                } else if (key.toLowerCase() === 'x') {
+                    event.preventDefault();
+                    this.deleteSelectedNodes();
+                } else if (event.shiftKey && key.toLowerCase() === 'd') {
+                    event.preventDefault();
+                    this.duplicateSelectedNodes();
+                } else if (key === 'F2') {
+                    event.preventDefault();
+                    if (this.activeNode && this.selectedNodes.size === 1) {
+                        this.activeNode.startRename();
+                    }
+                }
+            }
+
+            onWheel(event) {
+                event.preventDefault();
+                const rect = this.container.getBoundingClientRect();
+                const mouseX = event.clientX - rect.left;
+                const mouseY = event.clientY - rect.top;
+                const zoomFactor = 1.1;
+                const oldZoom = this.zoom;
+
+                if (event.deltaY < 0) {
+                    this.zoom *= zoomFactor;
+                } else {
+                    this.zoom /= zoomFactor;
+                }
+
+                this.zoom = Math.max(0.2, Math.min(this.zoom, 3));
+                this.pan.x = mouseX - (mouseX - this.pan.x) * (this.zoom / oldZoom);
+                this.pan.y = mouseY - (mouseY - this.pan.y) * (this.zoom / oldZoom);
+                this.updateTransform();
+            }
+
+            onContextMenu(event) {
+                if (event.ctrlKey) {
+                    event.preventDefault();
+                    return;
+                }
+                event.preventDefault();
+                this.showContextMenu(event.clientX, event.clientY);
+            }
+
+            showContextMenu(clientX, clientY) {
+                const rect = this.container.getBoundingClientRect();
+                const editorX = (clientX - rect.left - this.pan.x) / this.zoom;
+                const editorY = (clientY - rect.top - this.pan.y) / this.zoom;
+                this.lastMousePos = { x: editorX, y: editorY };
+                this.contextMenu.style.left = `${clientX}px`;
+                this.contextMenu.style.top = `${clientY}px`;
+                this.contextMenu.style.display = 'block';
+            }
+
+            updateTransform() {
+                const transform = `translate(${this.pan.x}px, ${this.pan.y}px) scale(${this.zoom})`;
+                this.content.style.transform = transform;
+                this.container.style.backgroundPosition = `${this.pan.x}px ${this.pan.y}px`;
+                this.container.style.backgroundSize = `${20 * this.zoom}px ${20 * this.zoom}px`;
+            }
+
+            addNode(node) {
+                this.nodes.set(node.id, node);
+                this.nodesContainer.appendChild(node.element);
+                if (!(node instanceof FrameNode)) {
+                    this.updateAllFrameChildren();
+                }
+            }
+
+            findSocket(socketId) {
+                if (!socketId) return null;
+                for (const node of this.nodes.values()) {
+                    const socket = node.sockets.get(socketId);
+                    if (socket) return socket;
+                }
+                return null;
+            }
+
+            createConnection(fromSocket, toSocket) {
+                if (toSocket.connection) {
+                    this.removeConnection(toSocket.connection);
+                }
+                const connection = new Connection(this, fromSocket, toSocket);
+                this.connections.set(connection.id, connection);
+                this.svg.appendChild(connection.pathElement);
+                fromSocket.addConnection(connection);
+                toSocket.addConnection(connection);
+                connection.updatePath();
+                this.propagateCalculation(toSocket.node);
+            }
+
+            removeConnection(connection) {
+                connection.fromSocket.removeConnection(connection);
+                connection.toSocket.removeConnection(connection);
+                connection.destroy();
+                this.connections.delete(connection.id);
+                this.propagateCalculation(connection.toSocket.node);
+            }
+
+            updateAllConnections() {
+                for (const conn of this.connections.values()) {
+                    conn.updatePath();
+                }
+            }
+
+            createPath(p1, p2) {
+                const hx1 = p1.x + Math.abs(p2.x - p1.x) * 0.5;
+                const hx2 = p2.x - Math.abs(p2.x - p1.x) * 0.5;
+                return `M ${p1.x} ${p1.y} C ${hx1} ${p1.y} ${hx2} ${p2.y} ${p2.x} ${p2.y}`;
+            }
+
+            propagateCalculation(startNode) {
+                const visited = new Set();
+                const queue = [startNode];
+                while (queue.length > 0) {
+                    const currentNode = queue.shift();
+                    if (visited.has(currentNode.id)) continue;
+                    currentNode.calculate();
+                    visited.add(currentNode.id);
+                    for (const outputSocket of currentNode.outputs) {
+                        for (const connection of outputSocket.connections) {
+                            if (connection.toSocket) {
+                                queue.push(connection.toSocket.node);
+                            }
+                        }
+                    }
+                }
+            }
+
+            selectNode(node) {
+                if (!this.selectedNodes.has(node.id)) {
+                    this.selectedNodes.add(node.id);
+                    node.setSelected(true);
+                    this.activeNode = node;
+                }
+            }
+
+            clearSelection() {
+                for (const nodeId of this.selectedNodes) {
+                    this.nodes.get(nodeId)?.setSelected(false);
+                }
+                this.selectedNodes.clear();
+                this.activeNode = null;
+            }
+
+            selectAllNodes() {
+                this.clearSelection();
+                for (const node of this.nodes.values()) {
+                    this.selectNode(node);
+                }
+            }
+
+            deleteSelectedNodes() {
+                const framesToUpdate = new Set();
+                for (const nodeId of this.selectedNodes) {
+                    const node = this.nodes.get(nodeId);
+                    if (node) {
+                        if (node.parentFrame) framesToUpdate.add(node.parentFrame);
+                        if (node instanceof FrameNode) {
+                            for (const child of node.children) {
+                                child.parentFrame = null;
+                            }
+                        }
+                        node.destroy();
+                        this.nodes.delete(nodeId);
+                    }
+                }
+                this.selectedNodes.clear();
+                this.activeNode = null;
+                framesToUpdate.forEach(frame => frame.updateChildren());
+            }
+
+            startDraggingNewNodes(nodes) {
+                if (nodes.length === 0) return;
+                this.clearSelection();
+                nodes.forEach(node => this.selectNode(node));
+
+                const primaryNode = nodes[0];
+                this.isDraggingNode = primaryNode;
+                this.activeNode = primaryNode;
+
+                const mockEvent = { clientX: this.clientMousePos.x, clientY: this.clientMousePos.y };
+                const mousePos = this.getMousePosition(mockEvent);
+
+                this.dragOffset.x = mousePos.x - primaryNode.x;
+                this.dragOffset.y = mousePos.y - primaryNode.y;
+            }
+
+            duplicateSelectedNodes() {
+                if (this.selectedNodes.size === 0) return;
+
+                const oldToNewNodeMap = new Map();
+                const newNodes = [];
+                const mockEvent = { clientX: this.clientMousePos.x, clientY: this.clientMousePos.y };
+                const mousePos = this.getMousePosition(mockEvent);
+                let firstNode = this.nodes.get(this.selectedNodes.values().next().value);
+                const dx = mousePos.x - firstNode.x;
+                const dy = mousePos.y - firstNode.y;
+
+                for (const nodeId of this.selectedNodes) {
+                    const originalNode = this.nodes.get(nodeId);
+                    if (originalNode) {
+                        const newNode = new originalNode.constructor(this, originalNode.title, originalNode.x + dx, originalNode.y + dy);
+                        if (newNode instanceof NumberNode && originalNode instanceof NumberNode) {
+                            newNode.numberInput.value = originalNode.numberInput.value;
+                            newNode.calculate();
+                        }
+                        if (newNode instanceof FrameNode && originalNode instanceof FrameNode) {
+                            newNode.setSize(originalNode.width, originalNode.height);
+                        }
+                        this.addNode(newNode);
+                        newNodes.push(newNode);
+                        oldToNewNodeMap.set(originalNode.id, newNode);
+                    }
+                }
+
+                for (const connection of this.connections.values()) {
+                    const fromNodeId = connection.fromSocket.node.id;
+                    const toNodeId = connection.toSocket.node.id;
+                    if (oldToNewNodeMap.has(fromNodeId) && oldToNewNodeMap.has(toNodeId)) {
+                        const newFromNode = oldToNewNodeMap.get(fromNodeId);
+                        const newToNode = oldToNewNodeMap.get(toNodeId);
+                        const fromSocketIndex = connection.fromSocket.node.outputs.findIndex(s => s.id === connection.fromSocket.id);
+                        const toSocketIndex = connection.toSocket.node.inputs.findIndex(s => s.id === connection.toSocket.id);
+                        if (fromSocketIndex !== -1 && toSocketIndex !== -1) {
+                            this.createConnection(newFromNode.outputs[fromSocketIndex], newToNode.inputs[toSocketIndex]);
+                        }
+                    }
+                }
+                this.startDraggingNewNodes(newNodes);
+            }
+
+            updateAllFrameChildren() {
+                for (const node of this.nodes.values()) {
+                    if (node instanceof FrameNode) {
+                        node.updateChildren();
+                    }
+                }
+            }
+
+            checkCutIntersection(p1, p2) {
+                const connectionsToRemove = [];
+                for (const connection of this.connections.values()) {
+                    const p3 = connection.fromSocket.getAttachPoint();
+                    const p4 = connection.toSocket.getAttachPoint();
+                    if (this.doLinesIntersect(p1, p2, p3, p4)) {
+                        connectionsToRemove.push(connection);
+                    }
+                }
+                connectionsToRemove.forEach(conn => this.removeConnection(conn));
+            }
+
+            orientation(p, q, r) {
+                const val = (q.y - p.y) * (r.x - q.x) - (q.x - p.x) * (r.y - q.y);
+                if (val === 0) return 0;
+                return (val > 0) ? 1 : 2;
+            }
+
+            onSegment(p, q, r) {
+                return (q.x <= Math.max(p.x, r.x) && q.x >= Math.min(p.x, r.x) && q.y <= Math.max(p.y, r.y) && q.y >= Math.min(p.y, r.y));
+            }
+
+            doLinesIntersect(p1, q1, p2, q2) {
+                const o1 = this.orientation(p1, q1, p2);
+                const o2 = this.orientation(p1, q1, q2);
+                const o3 = this.orientation(p2, q2, p1);
+                const o4 = this.orientation(p2, q2, q1);
+                if (o1 !== o2 && o3 !== o4) return true;
+                if (o1 === 0 && this.onSegment(p1, p2, q1)) return true;
+                if (o2 === 0 && this.onSegment(p1, q2, q1)) return true;
+                if (o3 === 0 && this.onSegment(p2, p1, q2)) return true;
+                if (o4 === 0 && this.onSegment(p2, q1, q2)) return true;
+                return false;
+            }
+        }
+
+        class Socket {
+            constructor(node, type, name) {
+                this.id = generateId();
+                this.node = node;
+                this.type = type;
+                this.name = name;
+                this.connections = [];
+                this.value = null;
+                this.element = document.createElement('div');
+                this.element.className = `socket ${type}`;
+                this.element.dataset.id = this.id;
+
+                const label = document.createElement('span');
+                label.className = 'socket-label';
+                label.textContent = name;
+
+                this.container = document.createElement('div');
+                this.container.className = 'socket-container';
+
+                if (type === 'input') {
+                    this.container.append(this.element, label);
+                } else {
+                    this.container.append(label, this.element);
+                }
+            }
+
+            get nodeId() {
+                return this.node.id;
+            }
+
+            getAttachPoint() {
+                const parentTransform = new DOMMatrix(getComputedStyle(this.node.editor.content).transform);
+                const nodeRect = this.element.getBoundingClientRect();
+                const containerRect = this.node.editor.container.getBoundingClientRect();
+                const viewportX = nodeRect.left + nodeRect.width / 2;
+                const viewportY = nodeRect.top + nodeRect.height / 2;
+                const invertedMatrix = parentTransform.inverse();
+                const localPoint = new DOMPoint(viewportX - containerRect.left, viewportY - containerRect.top).matrixTransform(invertedMatrix);
+                return { x: localPoint.x, y: localPoint.y };
+            }
+
+            addConnection(connection) {
+                if (this.type === 'input') {
+                    this.connections = [connection];
+                } else {
+                    this.connections.push(connection);
+                }
+                this.element.classList.add('connected');
+            }
+
+            removeConnection(connection) {
+                this.connections = this.connections.filter(c => c.id !== connection.id);
+                if (this.connections.length === 0) {
+                    this.element.classList.remove('connected');
+                    if (this.type === 'input') this.value = null;
+                }
+            }
+
+            canConnect(otherSocket) {
+                return this.type !== otherSocket.type && this.nodeId !== otherSocket.nodeId;
+            }
+
+            get connection() {
+                return this.connections[0] || null;
+            }
+        }
+
+        class Connection {
+            constructor(editor, fromSocket, toSocket) {
+                this.id = generateId();
+                this.editor = editor;
+                this.fromSocket = fromSocket;
+                this.toSocket = toSocket;
+                this.isPulsing = false;
+                this.pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                this.pathElement.setAttribute('class', 'connection-path');
+                this.pathElement.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    this.editor.removeConnection(this);
+                });
+            }
+
+            updatePath() {
+                const p1 = this.fromSocket.getAttachPoint();
+                const p2 = this.toSocket.getAttachPoint();
+                this.pathElement.setAttribute('d', this.editor.createPath(p1, p2));
+            }
+
+            destroy() {
+                this.pathElement.remove();
+            }
+
+            pulse() {
+                if (this.isPulsing) return;
+                this.isPulsing = true;
+                this.pathElement.classList.add('flow-active');
+                setTimeout(() => {
+                    this.pathElement.classList.remove('flow-active');
+                    this.isPulsing = false;
+                }, 1000);
+            }
+        }
+
+        class Node {
+            constructor(editor, title, x, y) {
+                this.id = generateId();
+                this.editor = editor;
+                this.title = title;
+                this.x = x;
+                this.y = y;
+                this.inputs = [];
+                this.outputs = [];
+                this.sockets = new Map();
+                this.element = this.createNodeElement();
+                this.selected = false;
+                this.isRenaming = false;
+                this.parentFrame = null;
+                this.setPosition(x, y);
+            }
+
+            createNodeElement() {
+                const el = document.createElement('div');
+                el.className = 'node';
+                el.dataset.id = this.id;
+
+                this.headerElement = document.createElement('div');
+                this.headerElement.className = 'node-header';
+                this.headerElement.textContent = this.title;
+
+                const content = document.createElement('div');
+                content.className = 'node-content';
+                this.contentElement = content;
+
+                const io = document.createElement('div');
+                io.className = 'node-io';
+
+                this.inputsContainer = document.createElement('div');
+                this.inputsContainer.className = 'node-inputs';
+                this.outputsContainer = document.createElement('div');
+                this.outputsContainer.className = 'node-outputs';
+
+                io.append(this.inputsContainer, this.outputsContainer);
+                el.append(this.headerElement, content, io);
+                return el;
+            }
+
+            addInput(name) {
+                const socket = new Socket(this, 'input', name);
+                this.inputs.push(socket);
+                this.sockets.set(socket.id, socket);
+                this.inputsContainer.appendChild(socket.container);
+                return socket;
+            }
+
+            addOutput(name) {
+                const socket = new Socket(this, 'output', name);
+                this.outputs.push(socket);
+                this.sockets.set(socket.id, socket);
+                this.outputsContainer.appendChild(socket.container);
+                return socket;
+            }
+
+            setPosition(x, y) {
+                this.x = x;
+                this.y = y;
+                this.element.style.transform = `translate(${x}px, ${y}px)`;
+            }
+
+            setSelected(isSelected) {
+                this.selected = isSelected;
+                this.element.classList.toggle('selected', isSelected);
+            }
+
+            startRename() {
+                if (this.isRenaming) return;
+                this.isRenaming = true;
+                const originalTitle = this.headerElement.textContent;
+                this.headerElement.innerHTML = '';
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = originalTitle;
+                const finishRename = (value) => this.endRename(value);
+                const cancelRename = () => this.endRename(originalTitle);
+                input.addEventListener('blur', () => finishRename(input.value));
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.stopPropagation();
+                        finishRename(input.value);
+                    } else if (e.key === 'Escape') {
+                        e.stopPropagation();
+                        cancelRename();
+                    }
+                });
+                this.headerElement.appendChild(input);
+                input.focus();
+                input.select();
+            }
+
+            endRename(newTitle) {
+                if (!this.isRenaming) return;
+                this.title = newTitle.trim() || 'Node';
+                this.headerElement.textContent = this.title;
+                this.isRenaming = false;
+            }
+
+            destroy() {
+                for (const socket of [...this.sockets.values()]) {
+                    for (const connection of [...socket.connections]) {
+                        this.editor.removeConnection(connection);
+                    }
+                }
+                this.element.remove();
+            }
+
+            getInputValue(index) {
+                return this.inputs[index]?.connection?.fromSocket.value ?? null;
+            }
+
+            setOutputValue(index, value) {
+                const socket = this.outputs[index];
+                if (!socket) return;
+                if (socket.value === value && !Number.isNaN(value)) return;
+                socket.value = value;
+                for (const connection of socket.connections) {
+                    connection.pulse();
+                }
+            }
+
+            calculate() { }
+        }
+
+        class FrameNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.width = 400;
+                this.height = 300;
+                this.isResizing = false;
+                this.children = new Set();
+                this.setSize(this.width, this.height);
+                this.initResizer();
+                this.updateChildren();
+            }
+
+            createNodeElement() {
+                const el = super.createNodeElement();
+                el.classList.add('frame-node');
+                this.contentElement.remove();
+                this.inputsContainer.parentElement.remove();
+                this.resizerElement = document.createElement('div');
+                this.resizerElement.className = 'frame-resizer';
+                el.appendChild(this.resizerElement);
+                return el;
+            }
+
+            setSize(width, height) {
+                this.width = Math.max(150, width);
+                this.height = Math.max(100, height);
+                this.element.style.width = `${this.width}px`;
+                this.element.style.height = `${this.height}px`;
+            }
+
+            initResizer() {
+                let startX, startY, startWidth, startHeight;
+                const onMouseMove = (e) => {
+                    const dx = (e.clientX - startX) / this.editor.zoom;
+                    const dy = (e.clientY - startY) / this.editor.zoom;
+                    this.setSize(startWidth + dx, startHeight + dy);
+                    this.updateChildren();
+                };
+                const onMouseUp = () => {
+                    this.isResizing = false;
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                };
+                this.resizerElement.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    this.isResizing = true;
+                    startX = e.clientX;
+                    startY = e.clientY;
+                    startWidth = this.width;
+                    startHeight = this.height;
+                    document.addEventListener('mousemove', onMouseMove);
+                    document.addEventListener('mouseup', onMouseUp);
+                });
+            }
+
+            setPosition(x, y) {
+                const dx = x - this.x;
+                const dy = y - this.y;
+                super.setPosition(x, y);
+                if (!this.editor.selectedNodes.has(this.id)) return;
+                for (const child of this.children) {
+                    if (!this.editor.selectedNodes.has(child.id)) {
+                        child.setPosition(child.x + dx, child.y + dy);
+                    }
+                }
+            }
+
+            updateChildren() {
+                for (const node of this.editor.nodes.values()) {
+                    if (node === this || node instanceof FrameNode) continue;
+                    const isInside = node.x > this.x &&
+                        (node.x + node.element.offsetWidth) < (this.x + this.width) &&
+                        node.y > this.y &&
+                        (node.y + node.element.offsetHeight) < (this.y + this.height);
+                    if (isInside) {
+                        if (!node.parentFrame || node.parentFrame.isNodeBelow(this)) {
+                            if (node.parentFrame) {
+                                node.parentFrame.children.delete(node);
+                            }
+                            this.children.add(node);
+                            node.parentFrame = this;
+                        }
+                    } else if (node.parentFrame === this) {
+                        this.children.delete(node);
+                        node.parentFrame = null;
+                    }
+                }
+            }
+
+            isNodeBelow(otherFrame) {
+                return parseInt(this.element.style.zIndex) < parseInt(otherFrame.element.style.zIndex);
+            }
+        }
+
+        class NumberNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addOutput('Value');
+                const input = document.createElement('input');
+                input.type = 'number';
+                input.value = 10;
+                input.addEventListener('input', () => {
+                    this.calculate();
+                    this.editor.propagateCalculation(this);
+                });
+                this.numberInput = input;
+                this.contentElement.appendChild(input);
+                this.calculate();
+            }
+            calculate() {
+                this.setOutputValue(0, parseFloat(this.numberInput.value) || 0);
+            }
+        }
+
+        class PiNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addOutput('Value');
+                this.calculate();
+            }
+            calculate() {
+                this.setOutputValue(0, Math.PI);
+            }
+        }
+
+        class GravityNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addOutput('Value');
+                this.calculate();
+            }
+            calculate() {
+                this.setOutputValue(0, 9.80665);
+            }
+        }
+
+        class AddNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('A');
+                this.addInput('B');
+                this.addOutput('Result');
+            }
+            calculate() {
+                this.setOutputValue(0, (this.getInputValue(0) ?? 0) + (this.getInputValue(1) ?? 0));
+            }
+        }
+
+        class SubtractNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('A');
+                this.addInput('B');
+                this.addOutput('Result');
+            }
+            calculate() {
+                this.setOutputValue(0, (this.getInputValue(0) ?? 0) - (this.getInputValue(1) ?? 0));
+            }
+        }
+
+        class MultiplyNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('A');
+                this.addInput('B');
+                this.addOutput('Result');
+            }
+            calculate() {
+                this.setOutputValue(0, (this.getInputValue(0) ?? 1) * (this.getInputValue(1) ?? 1));
+            }
+        }
+
+        class DivideNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('A');
+                this.addInput('B');
+                this.addOutput('Result');
+            }
+            calculate() {
+                const a = this.getInputValue(0) ?? 0;
+                const b = this.getInputValue(1) ?? 1;
+                this.setOutputValue(0, b !== 0 ? a / b : 0);
+            }
+        }
+
+        class LogarithmNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('Value');
+                this.addInput('Base');
+                this.addOutput('Result');
+            }
+            calculate() {
+                const value = this.getInputValue(0) ?? 1;
+                const base = this.getInputValue(1) ?? Math.E;
+                if (value > 0 && base > 0 && base !== 1) {
+                    this.setOutputValue(0, Math.log(value) / Math.log(base));
+                } else {
+                    this.setOutputValue(0, 0);
+                }
+            }
+        }
+
+        class SineNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('Value');
+                this.addOutput('Result');
+            }
+            calculate() {
+                this.setOutputValue(0, Math.sin(this.getInputValue(0) ?? 0));
+            }
+        }
+
+        class CosineNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('Value');
+                this.addOutput('Result');
+            }
+            calculate() {
+                this.setOutputValue(0, Math.cos(this.getInputValue(0) ?? 0));
+            }
+        }
+
+        class ViewerNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('Value');
+                this.display = document.createElement('div');
+                this.display.className = 'viewer-display';
+                this.display.textContent = '...';
+                this.contentElement.appendChild(this.display);
+            }
+            calculate() {
+                const value = this.getInputValue(0);
+
+                if (value === null || isNaN(value)) {
+                    this.display.textContent = '...';
+                    return;
+                }
+
+                const precision = 8;
+
+                this.display.textContent = value.toLocaleString(undefined, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: precision
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            new NodeEditor('node-editor');
+        });
+    </script>
+
+</body>
+
+</html>
