@@ -1,4 +1,4 @@
-# Lambda-Flux
+# Lambda-Flux [🚀](https://kuldeep-dilliwar.github.io/Lambda-Flux/)
 
 > An interactive, flow-based node editor for building and evaluating mathematical expressions. Zero dependencies, pure vanilla JavaScript.
 
