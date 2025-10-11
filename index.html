@@ -211,16 +211,47 @@
             border-radius: 5px;
             padding: 5px 0;
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            min-width: 240px;
             z-index: 1000;
         }
 
-        #context-menu div {
+        #context-menu .menu-item {
+            position: relative;
             padding: 8px 20px;
             cursor: pointer;
+            white-space: nowrap;
         }
 
-        #context-menu div:hover {
+        #context-menu .menu-item:hover {
             background-color: #5a5a62;
+        }
+
+        #context-menu .submenu {
+            position: absolute;
+            left: 100%;
+            top: -5px;
+            background-color: #4a4a52;
+            border: 1px solid #1a1a1a;
+            border-radius: 5px;
+            padding: 5px 0;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            min-width: 180px;
+            z-index: 1001;
+            display: none;
+        }
+
+        #context-menu .menu-item:hover > .submenu {
+            display: block;
+        }
+
+        #context-menu .has-submenu::after {
+            content: '▶';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.8em;
+            color: #ccc;
         }
 
         .frame-node {
@@ -292,44 +323,111 @@
                 this.container.addEventListener('wheel', this.onWheel.bind(this), { passive: false });
                 this.container.addEventListener('contextmenu', this.onContextMenu.bind(this));
                 document.addEventListener('keydown', this.onKeyDown.bind(this));
-                document.addEventListener('click', () => this.contextMenu.style.display = 'none');
+                document.addEventListener('click', () => {
+                    this.contextMenu.style.display = 'none';
+                });
                 this.contextMenu.addEventListener('mousedown', (e) => e.stopPropagation());
+
+                this.buildMenu(this.nodeTypes(), this.contextMenu);
                 this.setupContextMenu();
+
                 this.addNode(new NumberNode(this, 'Value A', 100, 100));
                 this.addNode(new NumberNode(this, 'Value B', 100, 250));
                 this.addNode(new AddNode(this, 'Add', 400, 150));
                 this.addNode(new ViewerNode(this, 'Result', 700, 150));
             }
 
-            setupContextMenu() {
-                const nodeTypes = {
+            /*
+             * Returns a structured object representing the node types available in the context menu.
+             * Each key is the menu item name, and the value is either:
+             *   - A function that creates a new node (for leaf items).
+             *   - Another object representing a submenu (for parent items).
+             */
+            nodeTypes() {
+                return {
                     'Input': (x, y) => new NumberNode(this, 'Number', x, y),
-                    'Pi (π)': (x, y) => new PiNode(this, 'Pi (π)', x, y),
-                    'Gravity (g)': (x, y) => new GravityNode(this, 'Gravity (g)', x, y),
-                    'Add': (x, y) => new AddNode(this, 'Add', x, y),
-                    'Subtract': (x, y) => new SubtractNode(this, 'Subtract', x, y),
-                    'Multiply': (x, y) => new MultiplyNode(this, 'Multiply', x, y),
-                    'Divide': (x, y) => new DivideNode(this, 'Divide', x, y),
-                    'Logarithm': (x, y) => new LogarithmNode(this, 'Logarithm', x, y),
-                    'Sine': (x, y) => new SineNode(this, 'Sine', x, y),
-                    'Cosine': (x, y) => new CosineNode(this, 'Cosine', x, y),
-                    'Tangent': (x, y) => new TangentNode(this, 'Tangent', x, y), // <-- ADDED
+                    'Constant Values': {
+                        'Pi (π)': (x, y) => new PiNode(this, 'Pi (π)', x, y),
+                        'Gravity (g)': (x, y) => new GravityNode(this, 'Gravity (g)', x, y),
+                    },
+                    'Mathematical Operations': {
+                        'Add': (x, y) => new AddNode(this, 'Add', x, y),
+                        'Subtract': (x, y) => new SubtractNode(this, 'Subtract', x, y),
+                        'Multiply': (x, y) => new MultiplyNode(this, 'Multiply', x, y),
+                        'Divide': (x, y) => new DivideNode(this, 'Divide', x, y),
+                        'Logarithm': (x, y) => new LogarithmNode(this, 'Logarithm', x, y),
+                        'Power': (x, y) => new PowerNode(this, 'Power', x, y),
+                        'Root': (x, y) => new RootNode(this, 'Root', x, y),
+                    },
+                    'Trigonometric Functions': {
+                        'Sine': (x, y) => new SineNode(this, 'Sine', x, y),
+                        'Cosine': (x, y) => new CosineNode(this, 'Cosine', x, y),
+                        'Tangent': (x, y) => new TangentNode(this, 'Tangent', x, y),
+                    },
                     'Viewer': (x, y) => new ViewerNode(this, 'Viewer', x, y),
                     'Frame': (x, y) => new FrameNode(this, 'Frame', x, y),
                 };
-                for (const [name, factory] of Object.entries(nodeTypes)) {
+            }
+            
+            /*
+             * Builds the context menu HTML structure based on the provided 'structure' object.
+             * Creates nested 'div' elements with appropriate classes for menu items and submenus.
+             * Adds a 'data-action' attribute to leaf items to identify their node creation function.
+             */
+            buildMenu(structure, parentElement) {
+                for (const [name, value] of Object.entries(structure)) {
                     const item = document.createElement('div');
+                    item.className = 'menu-item';
                     item.textContent = name;
-                    item.addEventListener('click', () => {
-                        const spawnX = this.lastMousePos.x - 100;
+
+                    if (typeof value === 'function') {
+                        item.dataset.action = name;
+                    } else {
+                        item.classList.add('has-submenu');
+                        const submenu = document.createElement('div');
+                        submenu.className = 'submenu';
+                        this.buildMenu(value, submenu);
+                        item.appendChild(submenu);
+                    }
+                    parentElement.appendChild(item);
+                }
+            }
+            
+            /*
+             * Sets up a single click event listener on the context menu to handle all menu item clicks.
+             * Uses event delegation to determine which action to perform based on the clicked element.
+             */
+            setupContextMenu() {
+                const nodeConstructors = this.nodeTypes();
+                const allActions = {};
+
+                function flatten(obj) {
+                    for (const [key, value] of Object.entries(obj)) {
+                        if (typeof value === 'function') {
+                            allActions[key] = value;
+                        } else {
+                            flatten(value);
+                        }
+                    }
+                }
+                flatten(nodeConstructors);
+
+                this.contextMenu.addEventListener('click', (e) => {
+                    const target = e.target.closest('.menu-item');
+                    if (!target) return;
+
+                    const action = target.dataset.action;
+                    if (action && allActions[action]) {
+                        const spawnX = this.lastMousePos.x;
                         const spawnY = this.lastMousePos.y;
-                        const newNode = factory(spawnX, spawnY);
+
+                        const newNode = allActions[action](spawnX, spawnY);
                         this.addNode(newNode);
                         this.startDraggingNewNodes([newNode]);
+                        
                         this.contextMenu.style.display = 'none';
-                    });
-                    this.contextMenu.appendChild(item);
-                }
+                    }
+                });
             }
 
             getMousePosition(event) {
@@ -369,10 +467,10 @@
                 } else if (target.classList.contains('node-header') || target.classList.contains('frame-resizer')) {
                     const node = this.nodes.get(target.closest('.node').dataset.id);
                     if (!this.selectedNodes.has(node.id)) {
-                        if (!event.shiftKey) {
-                            this.clearSelection();
-                        }
+                        if (!event.shiftKey) this.clearSelection();
                         this.selectNode(node);
+                    } else {
+                        this.activeNode = node;
                     }
                     this.activeNode = node;
                     this.isDraggingNode = node;
@@ -420,7 +518,6 @@
 
             onMouseUp(event) {
                 if (this.isDraggingNode) {
-                    this.updateAllFrameChildren();
                 }
                 if (this.isCutting) {
                     this.isCutting = false;
@@ -1168,6 +1265,38 @@
             }
         }
 
+        class PowerNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('Base');
+                this.addInput('Exponent');
+                this.addOutput('Result');
+            }
+            calculate() {
+                const base = this.getInputValue(0) ?? 0;
+                const exponent = this.getInputValue(1) ?? 1;
+                this.setOutputValue(0, Math.pow(base, exponent));
+            }
+        }
+
+        class RootNode extends Node {
+            constructor(editor, title, x, y) {
+                super(editor, title, x, y);
+                this.addInput('Value');
+                this.addInput('Nth Root');
+                this.addOutput('Result');
+            }
+            calculate() {
+                const value = this.getInputValue(0) ?? 0;
+                const n = this.getInputValue(1) ?? 2;
+                if (n === 0) {
+                    this.setOutputValue(0, NaN);
+                    return;
+                }
+                this.setOutputValue(0, Math.pow(value, 1 / n));
+            }
+        }
+
         class SineNode extends Node {
             constructor(editor, title, x, y) {
                 super(editor, title, x, y);
@@ -1189,8 +1318,7 @@
                 this.setOutputValue(0, Math.cos(this.getInputValue(0) ?? 0));
             }
         }
-
-        // --- NEW NODE ---
+        
         class TangentNode extends Node {
             constructor(editor, title, x, y) {
                 super(editor, title, x, y);
