@@ -69,8 +69,11 @@ The editor comes with a built-in library of nodes accessible from the context me
 *   **Multiply:** Multiplies two input values.
 *   **Divide:** Divides the first value by the second.
 *   **Logarithm:** Calculates the logarithm of a value with a given base.
+*   **Power:** Raises the first input value to the power of the second input value.
+*   **Root:** Calculates the root of an input value based on the given degree.
 *   **Sine:** Calculates the sine of an input value (in radians).
 *   **Cosine:** Calculates the cosine of an input value (in radians).
+*   **Tangent:** Calculates the tangent of an input value (in radians).
 
 ### Output
 *   **Viewer:** Displays the final computed value of any connected input.
@@ -95,7 +98,7 @@ Adding a new node is straightforward.
 1.  **Create the Node Class:** Create a new class that extends `Node`.
 2.  **Define Constructor:** In the constructor, call `super()` and add the necessary inputs and outputs using `this.addInput('Name')` and `this.addOutput('Name')`.
 3.  **Implement `calculate()`:** Write the logic for your node in the `calculate()` method. Use `this.getInputValue(index)` to get data from inputs and `this.setOutputValue(index, value)` to send data to outputs.
-4.  **Add to Context Menu:** Add your new node class to the `nodeTypes` object in the `setupContextMenu()` method within the `NodeEditor` class.
+4.  **Add to Context Menu:** Add your new node class to the object returned by the **`nodeTypes()`** method within the `NodeEditor` class.
 
 ### Example: Creating a "Power" Node
 
@@ -119,23 +122,33 @@ class PowerNode extends Node {
 }
 ```
 
-**2. Add it to the `setupContextMenu` method:**
+**2. Add it to the `nodeTypes` method:**
 
-Find the `nodeTypes` object and add a new entry for your node.
+Find this method inside the NodeEditor class and add a new entry for your PowerNode in the appropriate category.
 
 ```javascript
-// Inside NodeEditor.setupContextMenu()
-const nodeTypes = {
-    'Input': (x, y) => new NumberNode(this, 'Number', x, y),
-    // ... other nodes
-    'Add': (x, y) => new AddNode(this, 'Add', x, y),
-    'Power': (x, y) => new PowerNode(this, 'Power', x, y), // <-- Add this line
-    'Subtract': (x, y) => new SubtractNode(this, 'Subtract', x, y),
-    // ... other nodes
-};
+// Inside the NodeEditor class
+
+nodeTypes() {
+    return {
+        // ... other nodes and categories like 'Input' and 'Constant Values'
+
+        'Mathematical Operations': {
+            'Add': (x, y) => new AddNode(this, 'Add', x, y),
+            'Subtract': (x, y) => new SubtractNode(this, 'Subtract', x, y),
+            'Multiply': (x, y) => new MultiplyNode(this, 'Multiply', x, y),
+            'Divide': (x, y) => new DivideNode(this, 'Divide', x, y),
+            'Logarithm': (x, y) => new LogarithmNode(this, 'Logarithm', x, y),
+            'Power': (x, y) => new PowerNode(this, 'Power', x, y), // <-- Add this line
+            'Root': (x, y) => new RootNode(this, 'Root', x, y),
+        },
+
+        // ... other categories like 'Trigonometric Functions'
+    };
+}
 ```
 
-Now, "Power" will appear as an option in the context menu, and you can use it in your graphs.
+Now, "Power" node will appear in the context menu under "Mathematical Operations", and you can use it in your graphs.
 
 ## 📄 License
 
