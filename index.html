@@ -518,6 +518,7 @@
 
             onMouseUp(event) {
                 if (this.isDraggingNode) {
+                    this.updateAllFrameChildren();
                 }
                 if (this.isCutting) {
                     this.isCutting = false;
